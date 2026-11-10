@@ -179,7 +179,7 @@ body.flat .flat-list{display:flex;flex-direction:column;gap:22px;max-width:760px
 <div class="hud bottom">
   <div class="strip" id="strip" hidden></div>
   <div class="nav" id="nav"></div>
-  <div class="hint chip" id="hint">Drag to look around · Click the floor to walk · Click a product to drop it in your basket · Hover a figure by a rack to meet a client</div>
+  <div class="hint chip" id="hint">Drag to look around · Click the floor to walk · Click a product to drop it in your basket · Hover a person to see who they are</div>
 </div>
 
 <div class="tip" id="tip" hidden></div>
@@ -600,12 +600,12 @@ function start3D(){
   const renderer=new T.WebGLRenderer({canvas:cv,antialias:true});
   renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));
   renderer.outputEncoding=T.sRGBEncoding;
-  renderer.toneMapping=T.ACESFilmicToneMapping; renderer.toneMappingExposure=0.84;
+  renderer.toneMapping=T.NoToneMapping;   // tone mapping happens in the finishing pass below
   renderer.shadowMap.enabled=true; renderer.shadowMap.type=T.PCFSoftShadowMap; renderer.shadowMap.autoUpdate=false; renderer.shadowMap.needsUpdate=true;
   const scene=new T.Scene();
   const col=c=>new T.Color(c).convertSRGBToLinear();
   scene.background=col("#0b0d14");
-  const camera=new T.PerspectiveCamera(62,1,0.05,120);
+  const camera=new T.PerspectiveCamera(56,1,0.1,120);
   camera.rotation.order="YXZ";
   scene.add(camera);
   const aniso=renderer.capabilities.getMaxAnisotropy();
@@ -684,7 +684,8 @@ function start3D(){
     g.globalAlpha=1; g.strokeStyle="#a59f94"; g.lineWidth=1.6;
     for(let i=0;i<=2;i++){ g.beginPath(); g.moveTo(i*256,0); g.lineTo(i*256,512); g.moveTo(0,i*256); g.lineTo(512,i*256); g.stroke(); }
   }),6,7.33);
-  const floor=new T.Mesh(new T.PlaneGeometry(2*W,L),new T.MeshStandardMaterial({map:floorTex,color:col("#b4b0a7"),roughness:0.16,metalness:0,envMapIntensity:1.5}));
+  const glossTex=rep(noisy(256,256,"#3c3c3c",46,(g)=>{ for(let i=0;i<40;i++){ g.globalAlpha=0.1; g.strokeStyle=i%2?"#787878":"#151515"; g.lineWidth=4+Math.random()*26; g.beginPath(); const y=Math.random()*256; g.moveTo(0,y); g.bezierCurveTo(90,y+(Math.random()-0.5)*90,170,y+(Math.random()-0.5)*90,256,y+(Math.random()-0.5)*60); g.stroke(); } g.globalAlpha=1; }),2.3,2.9); glossTex.encoding=T.LinearEncoding;
+  const floor=new T.Mesh(new T.PlaneGeometry(2*W,L),new T.MeshStandardMaterial({map:floorTex,color:col("#b4b0a7"),roughness:1,roughnessMap:glossTex,metalness:0,envMapIntensity:1.5}));
   floor.rotation.x=-Math.PI/2; floor.position.set(0,0,-L/2); floor.receiveShadow=true; floor.userData.kind="floor"; scene.add(floor);
   const lineM=new T.MeshStandardMaterial({color:col("#e9b92f"),roughness:0.3,envMapIntensity:0.8});
   const line=new T.Mesh(new T.PlaneGeometry(0.1,L-3.6),lineM); line.rotation.x=-Math.PI/2; line.position.set(0,0.003,-L/2+0.5); line.receiveShadow=true; scene.add(line);
@@ -799,7 +800,8 @@ function start3D(){
       const geo=new T.BoxGeometry(0.6,0.44,0.3);
       packs[it.id]=[];
       [SH[1],SH[2]].forEach(y=>[-0.63,0,0.63].forEach(dx=>{
-        const m=new T.Mesh(geo,mats); m.position.set(cx+dx,y+0.015+0.22,0.065); m.castShadow=true; m.receiveShadow=true;
+        const jr=Math.sin((cx+dx)*91.7+y*37.3+ri*5.1)*43758.5453, j=jr-Math.floor(jr);
+        const m=new T.Mesh(geo,mats); m.position.set(cx+dx+(j-0.5)*0.03,y+0.015+0.22,0.05+j*0.03); m.rotation.y=(j-0.5)*0.07; m.castShadow=true; m.receiveShadow=true;
         m.userData={kind:"pack",id:it.id}; g.add(m); packs[it.id].push(m); clickables.push(m);
       }));
       // shelf-edge label for the aisle
@@ -882,14 +884,14 @@ function start3D(){
     {skin:"#d2a27c",hair:"#2c1e16",top:"#3d5a50",bottom:"#23252b",long:false},
     {skin:"#74493a",hair:"#100c0b",top:"#e9b92f",bottom:"#27314a",long:false},
   ];
-  function person(look){
+  function person(look,pose){
     const g=new T.Group(), parts=[];
     const add=(geo,mat,x,y,z,parent)=>{ const m=new T.Mesh(geo,mat); m.position.set(x,y,z); m.castShadow=true; m.receiveShadow=true; (parent||g).add(m); parts.push(m); return m; };
     const fabric=c=>new T.MeshStandardMaterial({color:col(c),roughness:0.92,envMapIntensity:0.25,side:T.DoubleSide});
     const skin=new T.MeshStandardMaterial({color:col(look.skin),roughness:0.6,envMapIntensity:0.35}), top=fabric(look.top), bottom=fabric(look.bottom), shoe=std("#1c1a19",0.45);
     const limb=(r1,r2,len)=>new T.CylinderGeometry(r1,r2,len,18);
     [-1,1].forEach(s=>{
-      const leg=new T.Group(); leg.position.set(s*0.088,0.93,0); leg.rotation.z=s*0.02; g.add(leg);
+      const leg=new T.Group(); leg.position.set(s*0.088,0.93,0); leg.rotation.z=s*0.02+(pose?0.012:-0.008); leg.rotation.x=s*(pose?0.03:0.015); g.add(leg);
       add(limb(0.084,0.063,0.44),bottom,0,-0.22,0,leg); add(new T.SphereGeometry(0.063,14,10),bottom,0,-0.44,0,leg);
       add(limb(0.061,0.047,0.42),bottom,0,-0.65,0,leg);
       const sh=add(new T.SphereGeometry(0.06,16,10),shoe,0,-0.885,0.05,leg); sh.scale.set(0.82,0.62,2.1);
@@ -904,7 +906,8 @@ function start3D(){
       const arm=new T.Group(); arm.position.set(s*0.178,1.4,0); arm.rotation.z=s*0.1; g.add(arm);
       add(new T.SphereGeometry(0.052,14,10),top,0,0,0,arm);
       add(limb(0.05,0.044,0.28),top,0,-0.15,0,arm);
-      const fore=new T.Group(); fore.position.set(0,-0.29,0); fore.rotation.x=-0.16; arm.add(fore);
+      const fore=new T.Group(); fore.position.set(0,-0.29,0); fore.rotation.x=(pose&&s>0)?-1.35:-0.16-(s<0?0.08:0); arm.add(fore);
+      if(pose&&s>0){ arm.rotation.x=-0.18; const ph=add(new T.BoxGeometry(0.07,0.14,0.009),std("#111214",0.2,0.5),0,-0.335,0.03,fore); ph.rotation.x=0.5; }
       const fm=look.long?top:skin;
       add(new T.SphereGeometry(0.045,12,8),fm,0,0,0,fore); add(limb(0.043,0.034,0.26),fm,0,-0.13,0,fore);
       add(new T.SphereGeometry(0.04,12,10),skin,0,-0.3,0,fore).scale.set(0.72,1.25,0.48);
@@ -915,28 +918,13 @@ function start3D(){
   CLIENTS.forEach((cl,ci)=>{
     const ri=Math.max(0,Math.min(RACKS.length-1,(cl.rack||1)-1)), side=ri%2===0?-1:1, rz=-6-Math.floor(ri/2)*9, dir=cl.end?-1:1;
     const x=side*7.45, z=rz+dir*4.0;
-    const P=person(LOOKS[ci%LOOKS.length]);
+    const P=person(LOOKS[ci%LOOKS.length],ci%2);
     P.g.position.set(x,0,z);
     P.g.rotation.y=Math.atan2(side*3.6-x,(rz+dir*1.6)-z);
     scene.add(P.g); contact(0.8,0.8,x,z,0.5);
-    // floor sign naming the client
-    const sg=new T.Group(); sg.position.set(side*6.9,0,z+dir*0.62); sg.rotation.y=Math.atan2(side*3.6-side*6.9,(rz+dir*1.6)-(z+dir*0.62)); scene.add(sg);
-    const dm=std("#232325",0.35,0.7), parts=P.parts;
-    const b0=new T.Mesh(new T.CylinderGeometry(0.15,0.16,0.018,28),dm); b0.position.y=0.009; b0.castShadow=true; sg.add(b0);
-    const pole=new T.Mesh(new T.CylinderGeometry(0.011,0.011,1.2,12),dm); pole.position.y=0.6; pole.castShadow=true; sg.add(pole);
-    const fr=box(0.66,0.47,0.022,dm,0,1.4,0,sg); fr.rotation.x=-0.1;
-    const card=label(0.61,0.42,tex(640,440,(c,w,h)=>{
-      c.fillStyle="#fbfaf6"; c.fillRect(0,0,w,h);
-      c.fillStyle=C.red; c.textAlign="center"; c.textBaseline="middle"; c.font=`600 26px ${SANS}`; spaced(c,"OUR CLIENT",w/2,92,9);
-      c.fillStyle=C.ink; let size=96, lines;
-      do{ size-=6; c.font=`700 ${size}px ${DISPLAY}`; lines=wrap(c,cl.name,w-70); } while((lines.length>2||lines.some(l=>c.measureText(l).width>w-70))&&size>30);
-      lines.forEach((l,i)=>c.fillText(l,w/2,210+(i-(lines.length-1)/2)*size*1.08));
-      c.fillStyle="#6b645a"; c.font=`500 24px ${SANS}`; c.fillText(cl.who,w/2,360);
-    }),0,1.4,0.0125,sg); card.rotation.x=-0.1;
-    contact(0.5,0.5,sg.position.x,sg.position.z,0.45);
-    parts.push(fr,card);
+    const parts=P.parts;
     parts.forEach(m=>{ m.userData={kind:"client",ci}; clickables.push(m); });
-    people.push({g:P.g,stand:{x:side*5.5,z:z+dir*0.2}});
+    people.push({g:P.g,stand:{x:side*5.3,z:z-dir*0.6}});
   });
 
   /* ---- the basket you carry ---- */
@@ -961,6 +949,60 @@ function start3D(){
     });
   }
 
+  /* ---- finishing pass: the scene is drawn to a buffer, then shaded like a photograph ----
+     contact shading from the depth buffer, filmic tone curve, slight warmth, vignette and grain */
+  const post=(()=>{
+    const gl2=renderer.capabilities.isWebGL2, canFloat=gl2&&!!renderer.extensions.get("EXT_color_buffer_float");
+    const rt=new T.WebGLRenderTarget(4,4,{minFilter:T.LinearFilter,magFilter:T.LinearFilter,format:T.RGBAFormat,type:canFloat?T.HalfFloatType:T.UnsignedByteType});
+    rt.depthTexture=new T.DepthTexture(4,4,T.UnsignedIntType);
+    const u={ tColor:{value:rt.texture}, tDepth:{value:rt.depthTexture}, res:{value:new T.Vector2(4,4)}, near:{value:camera.near}, far:{value:camera.far},
+              tanHalf:{value:0.5}, aspect:{value:1}, time:{value:0}, aoOn:{value:1}, exposure:{value:1.04} };
+    const mat=new T.ShaderMaterial({ uniforms:u, depthTest:false, depthWrite:false, extensions:{derivatives:true},
+      vertexShader:"varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.0,1.0); }",
+      fragmentShader:`
+        precision highp float;
+        uniform sampler2D tColor; uniform sampler2D tDepth; uniform vec2 res;
+        uniform float near, far, tanHalf, aspect, time, aoOn, exposure;
+        varying vec2 vUv;
+        float lin(float d){ float z=d*2.0-1.0; return 2.0*near*far/(far+near-z*(far-near)); }
+        vec3 posAt(vec2 uv){ float d=lin(texture2D(tDepth,uv).x); return vec3((uv*2.0-1.0)*vec2(aspect*tanHalf,tanHalf)*d,-d); }
+        float ign(vec2 p){ return fract(52.9829189*fract(dot(p,vec2(0.06711056,0.00583715)))); }
+        vec3 aces(vec3 x){ return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),0.0,1.0); }
+        void main(){
+          vec3 c=texture2D(tColor,vUv).rgb;
+          vec3 p=posAt(vUv);
+          float d=-p.z, ao=1.0;
+          if(aoOn>0.5 && d<45.0){
+            vec3 n=normalize(cross(dFdx(p),dFdy(p)));
+            float R=0.42, rUv=min(0.11,R/(d*2.0*tanHalf)), rot=ign(gl_FragCoord.xy)*6.2831853, occ=0.0;
+            for(int i=0;i<12;i++){
+              float fi=float(i)+0.5, r=sqrt(fi/12.0), a=rot+fi*2.3999632;
+              vec2 o=vec2(cos(a)/aspect,sin(a))*r*rUv;
+              vec3 v=posAt(vUv+o)-p; float l=length(v)+1e-4;
+              occ+=max(0.0,dot(n,v)/l-0.14)*(1.0-smoothstep(R*0.25,R*1.6,l));
+            }
+            ao=clamp(1.0-occ/12.0*1.9,0.0,1.0);
+          }
+          c*=mix(1.0,ao,0.9);
+          c=aces(c*exposure*vec3(1.03,1.0,0.955));
+          vec2 q=(vUv-0.5)*vec2(1.0,0.86);
+          c*=1.0-0.34*smoothstep(0.32,0.95,length(q)*1.55);
+          c=pow(c,vec3(1.0/2.2));
+          c+=(ign(gl_FragCoord.xy+vec2(time*61.0,time*37.0))-0.5)*0.03;
+          gl_FragColor=vec4(c,1.0);
+        }` });
+    const quad=new T.Mesh(new T.PlaneGeometry(2,2),mat); quad.frustumCulled=false;
+    const ps=new T.Scene(); ps.add(quad);
+    const pc=new T.OrthographicCamera(-1,1,1,-1,0,1);
+    let scale=1.5, cw=4, ch=4;
+    function size(){ const k=Math.min(2,Math.max(scale,renderer.getPixelRatio())); const W2=Math.max(4,Math.round(cw*k)), H2=Math.max(4,Math.round(ch*k)); rt.setSize(W2,H2); u.res.value.set(W2,H2); }
+    return {
+      resize(w,h,tv){ cw=w; ch=h; u.tanHalf.value=tv; u.aspect.value=w/h; size(); },
+      lighten(){ u.aoOn.value=0; scale=1; size(); },          // for slow graphics cards
+      render(t){ u.time.value=t%10; renderer.setRenderTarget(rt); renderer.render(scene,camera); renderer.setRenderTarget(null); renderer.render(ps,pc); }
+    };
+  })();
+
   /* ---- state ---- */
   let state="outside", tIntro=0, z0=9, yaw=0, pitch=0, yawT=null, pitchT=0, target=null, after=null;
   const zIn=-3.4, B={x:5.9,zMin:-L+3.5,zMax:-1.2};
@@ -974,6 +1016,7 @@ function start3D(){
     const w=cv.clientWidth||innerWidth, h=cv.clientHeight||innerHeight;
     renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix();
     const tv=Math.tan(T.MathUtils.degToRad(camera.fov/2)), th=tv*camera.aspect;
+    post.resize(w,h,tv);
     z0=Math.min(22,Math.max(8.5,4.9/th));
     if(state==="outside") camera.position.z=z0;
     const d=0.62, s=Math.min(1,Math.max(0.55,th*0.9));
@@ -1107,7 +1150,7 @@ function start3D(){
   const ease=t=>t<0?0:t>1?1:t*t*(3-2*t);
   const easeIO=t=>t<0?0:t>1?1:(t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2);
   const bounce=t=>{ const n=7.5625,d=2.75; if(t<1/d) return n*t*t; if(t<2/d) return n*(t-=1.5/d)*t+.75; if(t<2.5/d) return n*(t-=2.25/d)*t+.9375; return n*(t-=2.625/d)*t+.984375; };
-  let last=performance.now();
+  let last=performance.now(), perfN=0, perfT=0;
   function frame(now){
     const dt=Math.min(0.05,(now-last)/1000); last=now;
 
@@ -1163,7 +1206,8 @@ function start3D(){
     bump=Math.max(0,bump-dt*3.2);
     basket.position.copy(basketBase); basket.position.y-=Math.sin(bump*Math.PI)*0.03;
 
-    renderer.render(scene,camera);
+    post.render(now/1000);
+    if(perfN>=0&&state==="inside"){ perfT+=dt; if(++perfN>=80){ if(perfT/perfN>0.045) post.lighten(); perfN=-1; } }
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
